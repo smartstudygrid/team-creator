@@ -1,0 +1,1534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Saturday Cricket Squad Builder</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter & Oswald for sporty matchday headers -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Oswald:wght@600;700&display=swap" rel="stylesheet">
+  <!-- Font Awesome for crisp icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            display: ['Oswald', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Custom scrollbar & drag visual helpers */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+      border-radius: 999px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+    .drop-zone-active {
+      outline: 2px dashed #10b981;
+      outline-offset: -4px;
+      background-color: rgba(16, 185, 129, 0.06);
+    }
+    .dragging-card {
+      opacity: 0.45;
+      transform: scale(0.98);
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col selection:bg-emerald-500 selection:text-white">
+
+  <!-- Toast Notification Container (Replaces alert/confirm) -->
+  <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0"></div>
+
+  <!-- Top Navigation Header -->
+  <header class="bg-slate-900 text-white shadow-md sticky top-0 z-30 border-b border-slate-800">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-950/50 text-slate-950 text-lg font-bold">
+          <i class="fa-solid fa-cricket-bat-ball"></i>
+        </div>
+        <div>
+          <h1 class="font-display text-xl sm:text-2xl tracking-wide uppercase leading-none text-white">Saturday XI Builder</h1>
+          <p class="text-xs text-slate-400 mt-0.5">Retention Draft &bull; Drag & Drop &bull; Matchday Graphics</p>
+        </div>
+      </div>
+
+      <!-- Data Persistence & Actions -->
+      <div class="flex flex-wrap items-center gap-2">
+        <span id="saveIndicator" class="hidden sm:inline-flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-950/70 border border-emerald-800/60 px-2.5 py-1.5 rounded-lg">
+          <i class="fa-solid fa-cloud-check"></i> Saved locally
+        </span>
+        <button onclick="exportJSON()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-medium transition flex items-center gap-1.5 border border-slate-700 cursor-pointer" title="Download backup JSON">
+          <i class="fa-solid fa-download text-emerald-400"></i>
+          <span>Export JSON</span>
+        </button>
+        <label class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-medium transition flex items-center gap-1.5 border border-slate-700 cursor-pointer" title="Load backup JSON">
+          <i class="fa-solid fa-upload text-sky-400"></i>
+          <span>Import JSON</span>
+          <input type="file" id="jsonFileInput" accept=".json" class="hidden" onchange="importJSON(event)" />
+        </label>
+        <button onclick="openConfirmModal('Reset All Squads?', 'This will clear all players, teams, and draft progress from local storage.', resetAllData)" class="px-3 py-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 text-xs sm:text-sm font-medium transition flex items-center gap-1.5 border border-rose-800/50 cursor-pointer">
+          <i class="fa-solid fa-rotate-left"></i>
+          <span class="hidden sm:inline">Reset</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 py-5 space-y-5">
+
+    <!-- Match Details & Captain / Retention Draft Bar -->
+    <section class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-4 sm:p-5">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-center">
+        <!-- Match Metadata -->
+        <div class="lg:col-span-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Match Title / Series</label>
+            <input type="text" id="matchTitleInput" placeholder="e.g., Saturday Morning Clash"
+              class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-medium"
+              oninput="updateMatchMeta()" />
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Date & Ground</label>
+            <input type="text" id="matchVenueInput" placeholder="e.g., Sat 6:30 AM • Turf Ground"
+              class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-medium"
+              oninput="updateMatchMeta()" />
+          </div>
+        </div>
+
+        <!-- Captain Toss & Retention Draft Controls -->
+        <div class="lg:col-span-7 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2.5 pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-100">
+          <button onclick="openCaptainPickerModal()" class="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-[0.99] text-slate-950 font-bold text-sm shadow-sm transition flex items-center justify-center gap-2 cursor-pointer">
+            <i class="fa-solid fa-shuffle"></i>
+            <span>Pick 2 Random Captains</span>
+          </button>
+
+          <button id="draftToggleBtn" onclick="toggleDraftMode()" class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-semibold text-sm shadow-sm transition flex items-center justify-center gap-2 cursor-pointer">
+            <i class="fa-solid fa-gavel"></i>
+            <span id="draftToggleLabel">Start Retention Draft (3-3-1-1)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Active Retention Draft Banner (Visible only when Draft Mode is ON) -->
+      <div id="draftBanner" class="hidden mt-4 p-4 rounded-xl bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-950 text-white border border-indigo-500/40 shadow-inner">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div class="flex items-start sm:items-center gap-3">
+            <div id="draftTurnBadge" class="w-11 h-11 rounded-xl bg-amber-400 text-slate-950 font-display font-bold text-lg flex items-center justify-center shrink-0 shadow">
+              1/3
+            </div>
+            <div>
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-[11px] uppercase tracking-wider font-bold px-2 py-0.5 rounded bg-indigo-500/30 text-indigo-200 border border-indigo-400/30" id="draftPhaseTag">
+                  Retention Round
+                </span>
+                <span class="text-xs text-slate-300" id="draftSubInfo">Toss Winner retains 3 players first</span>
+              </div>
+              <h3 class="text-base sm:text-lg font-bold text-white mt-0.5" id="draftPromptText">
+                Team A's Turn — Click or Drag a player into Team A
+              </h3>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2 shrink-0">
+            <button onclick="swapFirstPickCaptain()" class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold text-amber-300 border border-white/15 transition cursor-pointer" title="Switch which captain won the toss and gets first 3 retentions">
+              <i class="fa-solid fa-arrows-rotate mr-1"></i> Swap Toss Winner
+            </button>
+            <button onclick="resetDraftProgress()" class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold text-slate-200 border border-white/15 transition cursor-pointer">
+              Restart Draft Order
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3-Column Squad Builder Board -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+
+      <!-- COLUMN 1: Unassigned Player Pool (4 cols on lg) -->
+      <div class="lg:col-span-4 bg-white rounded-2xl shadow-sm border border-slate-200/80 flex flex-col overflow-hidden">
+        <div class="p-4 bg-slate-50 border-b border-slate-200/80">
+          <div class="flex items-center justify-between gap-2 mb-3">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
+              <h2 class="font-bold text-slate-800 text-base">Available Players</h2>
+            </div>
+            <span id="poolCountBadge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-200 text-slate-700">0</span>
+          </div>
+
+          <!-- Quick Add & Bulk Paste Controls -->
+          <div class="flex gap-2">
+            <input type="text" id="singlePlayerInput" placeholder="Add single player..."
+              class="flex-1 px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              onkeydown="if(event.key==='Enter') addSinglePlayer()" />
+            <button onclick="addSinglePlayer()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-sm font-semibold transition cursor-pointer" title="Add player">
+              <i class="fa-solid fa-plus"></i>
+            </button>
+            <button onclick="openBulkModal()" class="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold transition flex items-center gap-1.5 shrink-0 cursor-pointer" title="Copy & paste full WhatsApp list">
+              <i class="fa-solid fa-paste"></i>
+              <span>Paste List</span>
+            </button>
+          </div>
+
+          <!-- Search Filter inside Pool -->
+          <div class="relative mt-2.5">
+            <i class="fa-solid fa-magnifying-glass text-slate-400 text-xs absolute left-3 top-1/2 -translate-y-1/2"></i>
+            <input type="text" id="poolSearchInput" placeholder="Filter players..."
+              class="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              oninput="renderAll()" />
+          </div>
+        </div>
+
+        <!-- Helper Hint -->
+        <div class="px-4 py-2 bg-slate-100/70 border-b border-slate-200/60 text-[11px] text-slate-500 flex items-center justify-between">
+          <span><i class="fa-solid fa-hand-pointer mr-1 text-slate-400"></i> Drag to team or tap <strong>A / B</strong></span>
+          <span id="totalPlayersBadge" class="font-semibold text-slate-600">Total: 0</span>
+        </div>
+
+        <!-- Droppable Unassigned List -->
+        <div id="poolDropZone"
+          class="p-3 space-y-2 min-h-[340px] max-h-[600px] overflow-y-auto transition-colors"
+          ondragover="handleDragOver(event)"
+          ondragleave="handleDragLeave(event)"
+          ondrop="handleDrop(event, 'pool')">
+          <!-- Player cards injected via JS -->
+        </div>
+      </div>
+
+      <!-- COLUMN 2: TEAM A (4 cols on lg) -->
+      <div class="lg:col-span-4 bg-white rounded-2xl shadow-sm border-2 transition-all flex flex-col overflow-hidden" id="teamACardWrapper" style="border-color: #2563eb;">
+        <!-- Team A Header -->
+        <div id="teamAHeader" class="p-4 text-white transition-colors" style="background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);">
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <span class="text-[11px] font-bold uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-md">Squad 1</span>
+            <div class="flex items-center gap-2">
+              <!-- Color Picker Dots -->
+              <div class="flex items-center gap-1 bg-black/20 px-2 py-1 rounded-full">
+                <button onclick="setTeamColor('A', '#2563eb')" class="w-3.5 h-3.5 rounded-full bg-blue-500 ring-1 ring-white cursor-pointer" title="Royal Blue"></button>
+                <button onclick="setTeamColor('A', '#059669')" class="w-3.5 h-3.5 rounded-full bg-emerald-500 ring-1 ring-white cursor-pointer" title="Emerald Green"></button>
+                <button onclick="setTeamColor('A', '#dc2626')" class="w-3.5 h-3.5 rounded-full bg-red-600 ring-1 ring-white cursor-pointer" title="Crimson Red"></button>
+                <button onclick="setTeamColor('A', '#7c3aed')" class="w-3.5 h-3.5 rounded-full bg-violet-600 ring-1 ring-white cursor-pointer" title="Purple"></button>
+                <button onclick="setTeamColor('A', '#d97706')" class="w-3.5 h-3.5 rounded-full bg-amber-500 ring-1 ring-white cursor-pointer" title="Gold"></button>
+              </div>
+              <span id="teamACountBadge" class="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-white text-slate-900 shadow-sm">0</span>
+            </div>
+          </div>
+
+          <input type="text" id="teamANameInput" value="TEAM ALPHA"
+            class="w-full bg-white/15 hover:bg-white/20 focus:bg-white/25 text-white placeholder-white/70 font-display text-xl tracking-wide uppercase px-3 py-1.5 rounded-xl border border-white/25 focus:outline-none focus:ring-2 focus:ring-white/60"
+            oninput="updateTeamName('A', this.value)" />
+        </div>
+
+        <!-- Team A Drop Zone -->
+        <div id="teamADropZone"
+          class="p-3 space-y-2 min-h-[380px] max-h-[600px] overflow-y-auto flex-1 bg-slate-50/40 transition-colors"
+          ondragover="handleDragOver(event)"
+          ondragleave="handleDragLeave(event)"
+          ondrop="handleDrop(event, 'A')">
+          <!-- Team A players injected via JS -->
+        </div>
+      </div>
+
+      <!-- COLUMN 3: TEAM B (4 cols on lg) -->
+      <div class="lg:col-span-4 bg-white rounded-2xl shadow-sm border-2 transition-all flex flex-col overflow-hidden" id="teamBCardWrapper" style="border-color: #dc2626;">
+        <!-- Team B Header -->
+        <div id="teamBHeader" class="p-4 text-white transition-colors" style="background: linear-gradient(135deg, #7f1d1d 0%, #dc2626 100%);">
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <span class="text-[11px] font-bold uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-md">Squad 2</span>
+            <div class="flex items-center gap-2">
+              <!-- Color Picker Dots -->
+              <div class="flex items-center gap-1 bg-black/20 px-2 py-1 rounded-full">
+                <button onclick="setTeamColor('B', '#dc2626')" class="w-3.5 h-3.5 rounded-full bg-red-600 ring-1 ring-white cursor-pointer" title="Crimson Red"></button>
+                <button onclick="setTeamColor('B', '#d97706')" class="w-3.5 h-3.5 rounded-full bg-amber-500 ring-1 ring-white cursor-pointer" title="Amber Gold"></button>
+                <button onclick="setTeamColor('B', '#0891b2')" class="w-3.5 h-3.5 rounded-full bg-cyan-600 ring-1 ring-white cursor-pointer" title="Cyan"></button>
+                <button onclick="setTeamColor('B', '#059669')" class="w-3.5 h-3.5 rounded-full bg-emerald-500 ring-1 ring-white cursor-pointer" title="Emerald"></button>
+                <button onclick="setTeamColor('B', '#4f46e5')" class="w-3.5 h-3.5 rounded-full bg-indigo-600 ring-1 ring-white cursor-pointer" title="Indigo"></button>
+              </div>
+              <span id="teamBCountBadge" class="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-white text-slate-900 shadow-sm">0</span>
+            </div>
+          </div>
+
+          <input type="text" id="teamBNameInput" value="TEAM BRAVO"
+            class="w-full bg-white/15 hover:bg-white/20 focus:bg-white/25 text-white placeholder-white/70 font-display text-xl tracking-wide uppercase px-3 py-1.5 rounded-xl border border-white/25 focus:outline-none focus:ring-2 focus:ring-white/60"
+            oninput="updateTeamName('B', this.value)" />
+        </div>
+
+        <!-- Team B Drop Zone -->
+        <div id="teamBDropZone"
+          class="p-3 space-y-2 min-h-[380px] max-h-[600px] overflow-y-auto flex-1 bg-slate-50/40 transition-colors"
+          ondragover="handleDragOver(event)"
+          ondragleave="handleDragLeave(event)"
+          ondrop="handleDrop(event, 'B')">
+          <!-- Team B players injected via JS -->
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Squad Graphic Generator Section -->
+    <section class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+        <div>
+          <h2 class="font-display text-xl uppercase tracking-wide text-slate-900 flex items-center gap-2">
+            <i class="fa-solid fa-image text-emerald-600"></i>
+            Matchday Squad Posters
+          </h2>
+          <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Generate high-resolution PNG graphics ready to share in your WhatsApp group.</p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2.5">
+          <button onclick="generateAndPreviewPoster('A')" class="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-semibold shadow-sm transition flex items-center gap-2 cursor-pointer">
+            <i class="fa-solid fa-shield-halved text-blue-400"></i>
+            <span id="btnPosterALabel">Team Alpha Image</span>
+          </button>
+          <button onclick="generateAndPreviewPoster('B')" class="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-semibold shadow-sm transition flex items-center gap-2 cursor-pointer">
+            <i class="fa-solid fa-shield-halved text-rose-400"></i>
+            <span id="btnPosterBLabel">Team Bravo Image</span>
+          </button>
+          <button onclick="generateAndPreviewPoster('BOTH')" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs sm:text-sm font-bold shadow-md transition flex items-center gap-2 cursor-pointer">
+            <i class="fa-solid fa-people-arrows"></i>
+            <span>Both Squads vs Poster</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Live Poster Preview Area -->
+      <div id="posterPreviewWrapper" class="mt-5 flex flex-col items-center justify-center bg-slate-100 rounded-xl p-4 sm:p-6 border border-dashed border-slate-300">
+        <div id="posterEmptyState" class="text-center py-8">
+          <div class="w-12 h-12 rounded-2xl bg-slate-200 text-slate-500 flex items-center justify-center mx-auto mb-3 text-xl">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+          </div>
+          <p class="text-sm font-semibold text-slate-700">Click any button above to render your squad poster</p>
+          <p class="text-xs text-slate-500 mt-1">Supports individual team sheets and head-to-head matchday graphics</p>
+        </div>
+
+        <div id="posterCanvasContainer" class="hidden w-full flex flex-col items-center gap-4">
+          <div class="flex flex-wrap items-center justify-center gap-3">
+            <button onclick="downloadCurrentPoster()" class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-lg shadow-emerald-600/20 transition flex items-center gap-2 cursor-pointer">
+              <i class="fa-solid fa-download"></i>
+              <span>Download PNG Image</span>
+            </button>
+            <button onclick="copyPosterToClipboard()" class="px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-semibold text-sm shadow-sm transition flex items-center gap-2 cursor-pointer">
+              <i class="fa-regular fa-copy"></i>
+              <span>Copy Image</span>
+            </button>
+          </div>
+          <div class="max-w-full overflow-auto rounded-xl shadow-2xl border border-slate-300 bg-slate-900">
+            <canvas id="squadCanvas" class="max-w-full h-auto block"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MODAL 1: Bulk Copy-Paste Players -->
+  <div id="bulkModal" class="fixed inset-0 z-40 hidden bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden animate-fadeIn">
+      <div class="p-4 sm:p-5 bg-slate-900 text-white flex items-center justify-between">
+        <div>
+          <h3 class="font-bold text-lg">Copy & Paste Player List</h3>
+          <p class="text-xs text-slate-400">Paste directly from WhatsApp — numbers, bullets & emojis are cleaned automatically</p>
+        </div>
+        <button onclick="closeBulkModal()" class="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white cursor-pointer">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div class="p-4 sm:p-5 space-y-3">
+        <textarea id="bulkTextarea" rows="10"
+          placeholder="1. Rahul Sharma&#10;2. Virat K&#10;3. Rohit&#10;4. Hardik&#10;5. Bumrah&#10;...paste all 24-26 names here"
+          class="w-full p-3.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-medium leading-relaxed"></textarea>
+        <div class="flex items-center justify-between text-xs text-slate-500">
+          <span>Supports one name per line or comma-separated</span>
+          <button onclick="fillSample26Players()" class="text-emerald-600 hover:underline font-semibold cursor-pointer">Load 26 Sample Players</button>
+        </div>
+      </div>
+      <div class="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
+        <button onclick="closeBulkModal()" class="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-100 cursor-pointer">Cancel</button>
+        <button onclick="processBulkPlayers()" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold shadow-sm cursor-pointer">Add Players to Pool</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 2: Random Captain Picker & Toss -->
+  <div id="captainModal" class="fixed inset-0 z-40 hidden bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
+      <div class="p-4 sm:p-5 bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 flex items-center justify-between">
+        <div>
+          <h3 class="font-display uppercase text-xl tracking-wide font-bold">Random Captain Toss</h3>
+          <p class="text-xs font-medium text-slate-900/80">Randomly picks 2 captains & decides who retains 3 players first</p>
+        </div>
+        <button onclick="closeCaptainPickerModal()" class="w-8 h-8 rounded-lg bg-black/10 hover:bg-black/20 flex items-center justify-center text-slate-950 cursor-pointer">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div class="p-5 space-y-4">
+        <p class="text-xs text-slate-600 leading-relaxed">
+          We will randomly select 2 players from your entire roster to lead <strong>Team 1</strong> and <strong>Team 2</strong>, assign them as Captains <strong>(C)</strong>, and flip a virtual coin for first retention rights!
+        </p>
+
+        <div id="captainResultBox" class="hidden p-4 rounded-xl bg-slate-900 text-white space-y-3 border border-slate-700">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
+            <div>
+              <span class="text-[10px] uppercase tracking-wider text-blue-400 font-bold" id="capModalTeamALabel">Team A Captain</span>
+              <p class="font-bold text-base text-white" id="capModalNameA">-</p>
+            </div>
+            <span class="px-2.5 py-1 rounded-lg bg-amber-400 text-slate-950 font-bold text-xs hidden" id="tossBadgeA">TOSS WINNER (1st Pick)</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <div>
+              <span class="text-[10px] uppercase tracking-wider text-rose-400 font-bold" id="capModalTeamBLabel">Team B Captain</span>
+              <p class="font-bold text-base text-white" id="capModalNameB">-</p>
+            </div>
+            <span class="px-2.5 py-1 rounded-lg bg-amber-400 text-slate-950 font-bold text-xs hidden" id="tossBadgeB">TOSS WINNER (1st Pick)</span>
+          </div>
+        </div>
+
+        <button onclick="spinRandomCaptains()" class="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-sm shadow-md transition flex items-center justify-center gap-2 cursor-pointer">
+          <i class="fa-solid fa-dice"></i>
+          <span>Spin & Select 2 Captains</span>
+        </button>
+      </div>
+      <div class="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
+        <button onclick="closeCaptainPickerModal()" class="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-100 cursor-pointer">Close</button>
+        <button id="applyCaptainsStartDraftBtn" onclick="applyCaptainsAndStartDraft()" class="hidden px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold shadow-sm cursor-pointer">
+          Start Retention Draft Now
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 3: Custom Confirmation Modal (Replaces confirm()) -->
+  <div id="confirmModal" class="fixed inset-0 z-50 hidden bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-sm w-full shadow-2xl border border-slate-200 p-5 space-y-4">
+      <div class="flex items-center gap-3 text-rose-600">
+        <div class="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center shrink-0">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+        </div>
+        <h3 id="confirmModalTitle" class="font-bold text-slate-900 text-base">Confirm Action</h3>
+      </div>
+      <p id="confirmModalMessage" class="text-sm text-slate-600 leading-relaxed">Are you sure?</p>
+      <div class="flex items-center justify-end gap-2 pt-2">
+        <button onclick="closeConfirmModal()" class="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-100 cursor-pointer">Cancel</button>
+        <button id="confirmModalActionBtn" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold cursor-pointer">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // STATE MANAGEMENT & LOCAL STORAGE PERSISTENCE
+    // =========================================================================
+    const STORAGE_KEY = 'saturday_cricket_squad_builder_v1';
+
+    let appState = {
+      matchTitle: 'SATURDAY CRICKET CLASH',
+      matchVenue: 'Saturday Morning • Local Turf',
+      teamA: {
+        name: 'TEAM ALPHA',
+        color: '#2563eb'
+      },
+      teamB: {
+        name: 'TEAM BRAVO',
+        color: '#dc2626'
+      },
+      // players: { id, name, team: 'pool'|'A'|'B', isCaptain: boolean, tag: string, pickOrder: number }
+      players: [],
+      draft: {
+        active: false,
+        firstPickTeam: 'A', // Which team won toss & gets first 3 retentions
+        pickHistory: []     // Array of 'A' or 'B' representing each draft pick made in draft mode
+      }
+    };
+
+    let draggedPlayerId = null;
+    let pendingCaptainSelection = null;
+    let currentPosterMode = null;
+
+    // Load saved state on startup
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          appState = {
+            ...appState,
+            ...parsed,
+            teamA: { ...appState.teamA, ...(parsed.teamA || {}) },
+            teamB: { ...appState.teamB, ...(parsed.teamB || {}) },
+            draft: { ...appState.draft, ...(parsed.draft || {}) }
+          };
+        }
+      } catch (err) {
+        console.error('Failed to load saved state:', err);
+      }
+    }
+
+    function saveState() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+        const indicator = document.getElementById('saveIndicator');
+        if (indicator) {
+          indicator.innerHTML = '<i class="fa-solid fa-check"></i> Saved';
+          setTimeout(() => {
+            indicator.innerHTML = '<i class="fa-solid fa-cloud-check"></i> Saved locally';
+          }, 1200);
+        }
+      } catch (err) {
+        console.error('Failed to save state:', err);
+      }
+    }
+
+    // =========================================================================
+    // TOAST & CONFIRMATION HELPERS (No alert/confirm)
+    // =========================================================================
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      const colors = {
+        success: 'bg-emerald-900 text-white border-emerald-700',
+        error: 'bg-rose-900 text-white border-rose-700',
+        warning: 'bg-amber-500 text-slate-950 border-amber-600 font-semibold',
+        info: 'bg-slate-900 text-white border-slate-700'
+      };
+      const icons = {
+        success: 'fa-circle-check text-emerald-400',
+        error: 'fa-circle-exclamation text-rose-400',
+        warning: 'fa-bolt text-slate-950',
+        info: 'fa-circle-info text-sky-400'
+      };
+
+      toast.className = `pointer-events-auto px-4 py-3 rounded-xl shadow-xl border text-xs sm:text-sm flex items-center gap-2.5 transition-all transform translate-y-2 opacity-0 ${colors[type] || colors.info}`;
+      toast.innerHTML = `<i class="fa-solid ${icons[type] || icons.info} text-base"></i><span>${escapeHTML(message)}</span>`;
+      container.appendChild(toast);
+
+      requestAnimationFrame(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      });
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 3200);
+    }
+
+    function openConfirmModal(title, message, onConfirm) {
+      document.getElementById('confirmModalTitle').textContent = title;
+      document.getElementById('confirmModalMessage').textContent = message;
+      const btn = document.getElementById('confirmModalActionBtn');
+      btn.onclick = () => {
+        closeConfirmModal();
+        onConfirm();
+      };
+      document.getElementById('confirmModal').classList.remove('hidden');
+    }
+
+    function closeConfirmModal() {
+      document.getElementById('confirmModal').classList.add('hidden');
+    }
+
+    function escapeHTML(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // =========================================================================
+    // PLAYER MANAGEMENT (Add, Bulk Paste, Remove, Captain Toggle, Move)
+    // =========================================================================
+    function generateId() {
+      return 'p_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 7);
+    }
+
+    function cleanPlayerName(raw) {
+      // Removes leading list numbers like "1.", "12)", "-", "•", "*" and trims whitespace
+      return raw
+        .replace(/^[\s\d\.\)\-\•\*\#\>]+/, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    function addSinglePlayer() {
+      const input = document.getElementById('singlePlayerInput');
+      const cleaned = cleanPlayerName(input.value);
+      if (!cleaned) return;
+
+      appState.players.push({
+        id: generateId(),
+        name: cleaned,
+        team: 'pool',
+        isCaptain: false,
+        tag: '',
+        pickOrder: 0
+      });
+
+      input.value = '';
+      saveState();
+      renderAll();
+      showToast(`Added ${cleaned} to player pool`, 'success');
+    }
+
+    function openBulkModal() {
+      document.getElementById('bulkModal').classList.remove('hidden');
+      document.getElementById('bulkTextarea').focus();
+    }
+
+    function closeBulkModal() {
+      document.getElementById('bulkModal').classList.add('hidden');
+    }
+
+    function fillSample26Players() {
+      const sampleNames = [
+        '1. Aarav Sharma', '2. Rohan Verma', '3. Vikramaditya', '4. Siddharth Nair',
+        '5. Karthik Iyer', '6. Aditya Kulkarni', '7. Manish Pandey', '8. Pranav Joshi',
+        '9. Nikhil Menon', '10. Varun Malhotra', '11. Harsha Vardhan', '12. Deepak Chahar',
+        '13. Yashasvi J', '14. Shubman G', '15. Suryakumar', '16. Sanju Samson',
+        '17. Axar Patel', '18. Kuldeep Yadav', '19. Arshdeep Singh', '20. Mohammed Siraj',
+        '21. Rinku Singh', '22. Tilak Varma', '23. Shivam Dube', '24. Ravi Bishnoi',
+        '25. Washington Sundar', '26. Ruturaj Gaikwad'
+      ];
+      document.getElementById('bulkTextarea').value = sampleNames.join('\n');
+    }
+
+    function processBulkPlayers() {
+      const rawText = document.getElementById('bulkTextarea').value;
+      if (!rawText.trim()) {
+        closeBulkModal();
+        return;
+      }
+
+      // Split by newlines or commas
+      const lines = rawText.split(/[\n,]+/);
+      let addedCount = 0;
+
+      lines.forEach(line => {
+        const name = cleanPlayerName(line);
+        if (name.length >= 2) {
+          // Check if player already has (C) in pasted text
+          const hasCap = /\(c\)/i.test(name);
+          const finalName = name.replace(/\(c\)/ig, '').trim();
+          appState.players.push({
+            id: generateId(),
+            name: finalName,
+            team: 'pool',
+            isCaptain: hasCap,
+            tag: '',
+            pickOrder: 0
+          });
+          addedCount++;
+        }
+      });
+
+      document.getElementById('bulkTextarea').value = '';
+      closeBulkModal();
+      saveState();
+      renderAll();
+      showToast(`Imported ${addedCount} players!`, 'success');
+    }
+
+    function removePlayer(id) {
+      appState.players = appState.players.filter(p => p.id !== id);
+      saveState();
+      renderAll();
+    }
+
+    function toggleCaptain(id) {
+      const player = appState.players.find(p => p.id === id);
+      if (!player) return;
+
+      const becomingCaptain = !player.isCaptain;
+      // If player is already in Team A or Team B, ensure only 1 captain per team
+      if (becomingCaptain && (player.team === 'A' || player.team === 'B')) {
+        appState.players.forEach(p => {
+          if (p.team === player.team) p.isCaptain = false;
+        });
+      }
+      player.isCaptain = becomingCaptain;
+      saveState();
+      renderAll();
+    }
+
+    function assignPlayerToTeam(playerId, targetTeam) {
+      const player = appState.players.find(p => p.id === playerId);
+      if (!player || player.team === targetTeam) return;
+
+      const previousTeam = player.team;
+
+      // Handle Retention Draft turn tracking when assigning from pool to Team A or B
+      if (appState.draft.active && previousTeam === 'pool' && (targetTeam === 'A' || targetTeam === 'B')) {
+        const expectedTeam = getCurrentDraftTurn().team;
+        if (targetTeam !== expectedTeam) {
+          const expectedName = expectedTeam === 'A' ? appState.teamA.name : appState.teamB.name;
+          showToast(`Retention Draft Turn: It is ${expectedName}'s turn to pick!`, 'warning');
+          return;
+        }
+        // Record pick in draft history
+        appState.draft.pickHistory.push(targetTeam);
+        const pickNumber = appState.draft.pickHistory.length;
+        // Mark first 3 picks for each team as Retained
+        const teamPicksSoFar = appState.draft.pickHistory.filter(t => t === targetTeam).length;
+        player.tag = teamPicksSoFar <= 3 ? `Retained #${teamPicksSoFar}` : `Pick #${pickNumber}`;
+        player.pickOrder = Date.now();
+      } else if (targetTeam === 'pool') {
+        player.tag = '';
+        player.pickOrder = 0;
+      } else {
+        player.pickOrder = Date.now();
+      }
+
+      // If player is captain and moves into a team that already has a captain, keep new captain
+      if (player.isCaptain && (targetTeam === 'A' || targetTeam === 'B')) {
+        appState.players.forEach(p => {
+          if (p.id !== player.id && p.team === targetTeam && p.isCaptain) {
+            p.isCaptain = false;
+          }
+        });
+      }
+
+      player.team = targetTeam;
+      saveState();
+      renderAll();
+    }
+
+    // =========================================================================
+    // DRAG AND DROP HANDLERS
+    // =========================================================================
+    function handleDragStart(event, playerId) {
+      draggedPlayerId = playerId;
+      event.dataTransfer.setData('text/plain', playerId);
+      event.dataTransfer.effectAllowed = 'move';
+      setTimeout(() => {
+        const el = document.getElementById(`card_${playerId}`);
+        if (el) el.classList.add('dragging-card');
+      }, 0);
+    }
+
+    function handleDragEnd(playerId) {
+      draggedPlayerId = null;
+      const el = document.getElementById(`card_${playerId}`);
+      if (el) el.classList.remove('dragging-card');
+      ['poolDropZone', 'teamADropZone', 'teamBDropZone'].forEach(zoneId => {
+        document.getElementById(zoneId)?.classList.remove('drop-zone-active');
+      });
+    }
+
+    function handleDragOver(event) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      event.currentTarget.classList.add('drop-zone-active');
+    }
+
+    function handleDragLeave(event) {
+      event.currentTarget.classList.remove('drop-zone-active');
+    }
+
+    function handleDrop(event, targetTeam) {
+      event.preventDefault();
+      event.currentTarget.classList.remove('drop-zone-active');
+      const playerId = event.dataTransfer.getData('text/plain') || draggedPlayerId;
+      if (playerId) {
+        assignPlayerToTeam(playerId, targetTeam);
+      }
+    }
+
+    // =========================================================================
+    // RANDOM CAPTAIN PICKER & RETENTION DRAFT LOGIC (3-3-1-1)
+    // =========================================================================
+    function openCaptainPickerModal() {
+      if (appState.players.length < 2) {
+        showToast('Add at least 2 players first to pick random captains!', 'warning');
+        return;
+      }
+      pendingCaptainSelection = null;
+      document.getElementById('captainResultBox').classList.add('hidden');
+      document.getElementById('applyCaptainsStartDraftBtn').classList.add('hidden');
+      document.getElementById('captainModal').classList.remove('hidden');
+    }
+
+    function closeCaptainPickerModal() {
+      document.getElementById('captainModal').classList.add('hidden');
+    }
+
+    function spinRandomCaptains() {
+      if (appState.players.length < 2) return;
+
+      // Fisher-Yates shuffle copy of all players
+      const shuffled = [...appState.players];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+
+      const capA = shuffled[0];
+      const capB = shuffled[1];
+      const tossWinner = Math.random() < 0.5 ? 'A' : 'B';
+
+      pendingCaptainSelection = { capA, capB, tossWinner };
+
+      document.getElementById('capModalTeamALabel').textContent = `${appState.teamA.name} Captain`;
+      document.getElementById('capModalTeamBLabel').textContent = `${appState.teamB.name} Captain`;
+      document.getElementById('capModalNameA').textContent = capA.name;
+      document.getElementById('capModalNameB').textContent = capB.name;
+
+      document.getElementById('tossBadgeA').classList.toggle('hidden', tossWinner !== 'A');
+      document.getElementById('tossBadgeB').classList.toggle('hidden', tossWinner !== 'B');
+
+      document.getElementById('captainResultBox').classList.remove('hidden');
+      document.getElementById('applyCaptainsStartDraftBtn').classList.remove('hidden');
+    }
+
+    function applyCaptainsAndStartDraft() {
+      if (!pendingCaptainSelection) return;
+      const { capA, capB, tossWinner } = pendingCaptainSelection;
+
+      // Reset everyone back to pool first so the retention draft starts cleanly with the 2 captains placed
+      appState.players.forEach(p => {
+        p.isCaptain = false;
+        p.team = 'pool';
+        p.tag = '';
+        p.pickOrder = 0;
+      });
+
+      const playerA = appState.players.find(p => p.id === capA.id);
+      const playerB = appState.players.find(p => p.id === capB.id);
+
+      if (playerA) {
+        playerA.isCaptain = true;
+        playerA.team = 'A';
+        playerA.tag = 'Captain';
+        playerA.pickOrder = 1;
+      }
+      if (playerB) {
+        playerB.isCaptain = true;
+        playerB.team = 'B';
+        playerB.tag = 'Captain';
+        playerB.pickOrder = 2;
+      }
+
+      appState.draft.active = true;
+      appState.draft.firstPickTeam = tossWinner;
+      appState.draft.pickHistory = [];
+
+      saveState();
+      closeCaptainPickerModal();
+      renderAll();
+      const winnerTeamName = tossWinner === 'A' ? appState.teamA.name : appState.teamB.name;
+      showToast(`Captains set! ${winnerTeamName} won toss & retains 3 players first.`, 'success');
+    }
+
+    /**
+     * Retention Draft Sequence:
+     * Picks 0, 1, 2 -> First Pick Captain (3 retained players)
+     * Picks 3, 4, 5 -> Second Captain (3 retained players)
+     * Picks 6, 7, 8, ... -> Alternating 1-by-1 (First, Second, First, Second...)
+     */
+    function getCurrentDraftTurn() {
+      const first = appState.draft.firstPickTeam;
+      const second = first === 'A' ? 'B' : 'A';
+      const count = appState.draft.pickHistory.length;
+
+      if (count < 3) {
+        return {
+          team: first,
+          phase: 'Retention Phase (3 Players)',
+          badge: `${count + 1}/3`,
+          subInfo: `${first === 'A' ? appState.teamA.name : appState.teamB.name} won toss — retaining 3 core players first`
+        };
+      } else if (count < 6) {
+        return {
+          team: second,
+          phase: 'Retention Phase (3 Players)',
+          badge: `${count - 2}/3`,
+          subInfo: `${second === 'A' ? appState.teamA.name : appState.teamB.name} now retains 3 core players`
+        };
+      } else {
+        const offset = count - 6;
+        const turnTeam = offset % 2 === 0 ? first : second;
+        return {
+          team: turnTeam,
+          phase: '1-by-1 Alternating Draft',
+          badge: `#${count + 1}`,
+          subInfo: 'Captains pick 1 player each in turn until all players are drafted'
+        };
+      }
+    }
+
+    function toggleDraftMode() {
+      appState.draft.active = !appState.draft.active;
+      saveState();
+      renderAll();
+      if (appState.draft.active) {
+        showToast('Retention Draft Mode activated!', 'info');
+      }
+    }
+
+    function swapFirstPickCaptain() {
+      appState.draft.firstPickTeam = appState.draft.firstPickTeam === 'A' ? 'B' : 'A';
+      saveState();
+      renderAll();
+    }
+
+    function resetDraftProgress() {
+      appState.draft.pickHistory = [];
+      saveState();
+      renderAll();
+      showToast('Draft pick counter reset to 1st retention.', 'info');
+    }
+
+    // =========================================================================
+    // TEAM METADATA & EXPORT/IMPORT JSON
+    // =========================================================================
+    function updateMatchMeta() {
+      appState.matchTitle = document.getElementById('matchTitleInput').value;
+      appState.matchVenue = document.getElementById('matchVenueInput').value;
+      saveState();
+    }
+
+    function updateTeamName(teamKey, val) {
+      if (teamKey === 'A') appState.teamA.name = val || 'TEAM A';
+      if (teamKey === 'B') appState.teamB.name = val || 'TEAM B';
+      saveState();
+      renderDraftBanner();
+      updatePosterButtons();
+    }
+
+    function setTeamColor(teamKey, hex) {
+      if (teamKey === 'A') appState.teamA.color = hex;
+      if (teamKey === 'B') appState.teamB.color = hex;
+      saveState();
+      renderTeamHeaders();
+    }
+
+    function exportJSON() {
+      const dataStr = JSON.stringify(appState, null, 2);
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const dateStamp = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `cricket-squads-${dateStamp}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Squad backup downloaded as JSON!', 'success');
+    }
+
+    function importJSON(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const parsed = JSON.parse(e.target.result);
+          if (!Array.isArray(parsed.players)) {
+            throw new Error('Invalid squad file format');
+          }
+          appState = {
+            ...appState,
+            ...parsed
+          };
+          saveState();
+          renderAll();
+          showToast('Squads loaded from JSON file!', 'success');
+        } catch (err) {
+          showToast('Could not read JSON file. Please check the file.', 'error');
+        }
+        event.target.value = '';
+      };
+      reader.readAsText(file);
+    }
+
+    function resetAllData() {
+      localStorage.removeItem(STORAGE_KEY);
+      appState = {
+        matchTitle: 'SATURDAY CRICKET CLASH',
+        matchVenue: 'Saturday Morning • Local Turf',
+        teamA: { name: 'TEAM ALPHA', color: '#2563eb' },
+        teamB: { name: 'TEAM BRAVO', color: '#dc2626' },
+        players: [],
+        draft: { active: false, firstPickTeam: 'A', pickHistory: [] }
+      };
+      document.getElementById('posterCanvasContainer').classList.add('hidden');
+      document.getElementById('posterEmptyState').classList.remove('hidden');
+      renderAll();
+      showToast('All squads and local cache cleared.', 'info');
+    }
+
+    // =========================================================================
+    // UI RENDERING
+    // =========================================================================
+    function renderAll() {
+      document.getElementById('matchTitleInput').value = appState.matchTitle;
+      document.getElementById('matchVenueInput').value = appState.matchVenue;
+      document.getElementById('teamANameInput').value = appState.teamA.name;
+      document.getElementById('teamBNameInput').value = appState.teamB.name;
+
+      renderTeamHeaders();
+      renderDraftBanner();
+      renderPlayerLists();
+      updatePosterButtons();
+    }
+
+    function renderTeamHeaders() {
+      const wrapperA = document.getElementById('teamACardWrapper');
+      const headerA = document.getElementById('teamAHeader');
+      wrapperA.style.borderColor = appState.teamA.color;
+      headerA.style.background = `linear-gradient(135deg, #0f172a 0%, ${appState.teamA.color} 100%)`;
+
+      const wrapperB = document.getElementById('teamBCardWrapper');
+      const headerB = document.getElementById('teamBHeader');
+      wrapperB.style.borderColor = appState.teamB.color;
+      headerB.style.background = `linear-gradient(135deg, #0f172a 0%, ${appState.teamB.color} 100%)`;
+    }
+
+    function updatePosterButtons() {
+      document.getElementById('btnPosterALabel').textContent = `${appState.teamA.name} Image`;
+      document.getElementById('btnPosterBLabel').textContent = `${appState.teamB.name} Image`;
+    }
+
+    function renderDraftBanner() {
+      const banner = document.getElementById('draftBanner');
+      const toggleBtn = document.getElementById('draftToggleBtn');
+      const toggleLabel = document.getElementById('draftToggleLabel');
+
+      if (!appState.draft.active) {
+        banner.classList.add('hidden');
+        toggleLabel.textContent = 'Start Retention Draft (3-3-1-1)';
+        toggleBtn.classList.replace('bg-rose-600', 'bg-indigo-600');
+        toggleBtn.classList.replace('hover:bg-rose-700', 'hover:bg-indigo-700');
+        return;
+      }
+
+      banner.classList.remove('hidden');
+      toggleLabel.textContent = 'Exit Draft Mode';
+      toggleBtn.classList.replace('bg-indigo-600', 'bg-rose-600');
+      toggleBtn.classList.replace('hover:bg-indigo-700', 'hover:bg-rose-700');
+
+      const poolRemaining = appState.players.filter(p => p.team === 'pool').length;
+      if (poolRemaining === 0 && appState.players.length > 0) {
+        document.getElementById('draftTurnBadge').innerHTML = '<i class="fa-solid fa-check"></i>';
+        document.getElementById('draftPhaseTag').textContent = 'Draft Complete';
+        document.getElementById('draftSubInfo').textContent = 'All players have been assigned to teams!';
+        document.getElementById('draftPromptText').textContent = 'Squads Ready — Generate your matchday posters below';
+        return;
+      }
+
+      const turn = getCurrentDraftTurn();
+      const activeTeamName = turn.team === 'A' ? appState.teamA.name : appState.teamB.name;
+      document.getElementById('draftTurnBadge').textContent = turn.badge;
+      document.getElementById('draftPhaseTag').textContent = turn.phase;
+      document.getElementById('draftSubInfo').textContent = turn.subInfo;
+      document.getElementById('draftPromptText').innerHTML = `<span class="underline decoration-amber-400 decoration-2 underline-offset-4">${escapeHTML(activeTeamName)}</span>'s Turn — Drag or click to draft a player`;
+    }
+
+    function renderPlayerLists() {
+      const searchFilter = document.getElementById('poolSearchInput').value.trim().toLowerCase();
+
+      const poolPlayers = appState.players.filter(p => p.team === 'pool');
+      const filteredPool = searchFilter
+        ? poolPlayers.filter(p => p.name.toLowerCase().includes(searchFilter))
+        : poolPlayers;
+
+      // Sort team players so Captain appears first, followed by pick/addition order
+      const sortTeamPlayers = (list) => {
+        return [...list].sort((a, b) => {
+          if (a.isCaptain !== b.isCaptain) return a.isCaptain ? -1 : 1;
+          return (a.pickOrder || 0) - (b.pickOrder || 0);
+        });
+      };
+
+      const teamAPlayers = sortTeamPlayers(appState.players.filter(p => p.team === 'A'));
+      const teamBPlayers = sortTeamPlayers(appState.players.filter(p => p.team === 'B'));
+
+      // Update counters
+      document.getElementById('poolCountBadge').textContent = poolPlayers.length;
+      document.getElementById('totalPlayersBadge').textContent = `Total: ${appState.players.length}`;
+      document.getElementById('teamACountBadge').textContent = `${teamAPlayers.length} Players`;
+      document.getElementById('teamBCountBadge').textContent = `${teamBPlayers.length} Players`;
+
+      // Render Pool
+      const poolZone = document.getElementById('poolDropZone');
+      if (filteredPool.length === 0) {
+        poolZone.innerHTML = `
+          <div class="text-center py-12 px-4 text-slate-400">
+            <i class="fa-solid fa-users-slash text-2xl mb-2 opacity-60"></i>
+            <p class="text-xs font-medium">${poolPlayers.length === 0 ? 'No players in pool. Paste a list or add names above!' : 'No matching players found.'}</p>
+          </div>`;
+      } else {
+        poolZone.innerHTML = filteredPool.map((p, idx) => createPlayerCardHTML(p, idx + 1, 'pool')).join('');
+      }
+
+      // Render Team A
+      const zoneA = document.getElementById('teamADropZone');
+      if (teamAPlayers.length === 0) {
+        zoneA.innerHTML = `
+          <div class="text-center py-16 px-4 text-slate-400 border-2 border-dashed border-slate-200 rounded-xl">
+            <i class="fa-solid fa-arrow-down-to-bracket text-xl mb-2 opacity-60"></i>
+            <p class="text-xs font-medium">Drag players here or tap <strong>A</strong></p>
+          </div>`;
+      } else {
+        zoneA.innerHTML = teamAPlayers.map((p, idx) => createPlayerCardHTML(p, idx + 1, 'A')).join('');
+      }
+
+      // Render Team B
+      const zoneB = document.getElementById('teamBDropZone');
+      if (teamBPlayers.length === 0) {
+        zoneB.innerHTML = `
+          <div class="text-center py-16 px-4 text-slate-400 border-2 border-dashed border-slate-200 rounded-xl">
+            <i class="fa-solid fa-arrow-down-to-bracket text-xl mb-2 opacity-60"></i>
+            <p class="text-xs font-medium">Drag players here or tap <strong>B</strong></p>
+          </div>`;
+      } else {
+        zoneB.innerHTML = teamBPlayers.map((p, idx) => createPlayerCardHTML(p, idx + 1, 'B')).join('');
+      }
+    }
+
+    function createPlayerCardHTML(player, indexNum, location) {
+      const capBadge = player.isCaptain
+        ? `<span class="px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 font-extrabold text-[10px] tracking-wide shadow-2xs">C</span>`
+        : '';
+
+      const retentionBadge = player.tag && location !== 'pool'
+        ? `<span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-semibold text-[10px]">${escapeHTML(player.tag)}</span>`
+        : '';
+
+      // Quick action buttons for touch/mobile convenience
+      let quickButtons = '';
+      if (location === 'pool') {
+        quickButtons = `
+          <button onclick="assignPlayerToTeam('${player.id}', 'A')" class="px-2 py-1 rounded-lg text-[11px] font-bold text-white transition cursor-pointer shadow-2xs" style="background-color: ${appState.teamA.color}" title="Move to ${escapeHTML(appState.teamA.name)}">
+            + A
+          </button>
+          <button onclick="assignPlayerToTeam('${player.id}', 'B')" class="px-2 py-1 rounded-lg text-[11px] font-bold text-white transition cursor-pointer shadow-2xs" style="background-color: ${appState.teamB.color}" title="Move to ${escapeHTML(appState.teamB.name)}">
+            + B
+          </button>
+          <button onclick="removePlayer('${player.id}')" class="w-6 h-6 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition cursor-pointer" title="Delete player">
+            <i class="fa-solid fa-trash-can text-[11px]"></i>
+          </button>
+        `;
+      } else {
+        const otherTeam = location === 'A' ? 'B' : 'A';
+        const otherColor = location === 'A' ? appState.teamB.color : appState.teamA.color;
+        quickButtons = `
+          <button onclick="assignPlayerToTeam('${player.id}', '${otherTeam}')" class="px-2 py-1 rounded-lg text-[10px] font-bold text-white transition cursor-pointer" style="background-color: ${otherColor}" title="Swap to Team ${otherTeam}">
+            <i class="fa-solid fa-right-left"></i> ${otherTeam}
+          </button>
+          <button onclick="assignPlayerToTeam('${player.id}', 'pool')" class="w-6 h-6 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 flex items-center justify-center transition cursor-pointer" title="Return to pool">
+            <i class="fa-solid fa-rotate-left text-[11px]"></i>
+          </button>
+        `;
+      }
+
+      return `
+        <div id="card_${player.id}"
+          draggable="true"
+          ondragstart="handleDragStart(event, '${player.id}')"
+          ondragend="handleDragEnd('${player.id}')"
+          class="group flex items-center justify-between gap-2 p-2.5 rounded-xl bg-white border ${player.isCaptain ? 'border-amber-400 ring-1 ring-amber-300/60 bg-amber-50/20' : 'border-slate-200/90'} hover:border-slate-300 shadow-2xs hover:shadow-sm cursor-grab active:cursor-grabbing transition select-none">
+          
+          <div class="flex items-center gap-2.5 min-w-0">
+            <i class="fa-solid fa-grip-vertical text-slate-300 group-hover:text-slate-400 text-xs shrink-0"></i>
+            <span class="w-5 text-xs font-bold text-slate-400 text-right shrink-0">${indexNum}.</span>
+            <span class="font-semibold text-sm text-slate-800 truncate">${escapeHTML(player.name)}</span>
+            ${capBadge}
+            ${retentionBadge}
+          </div>
+
+          <div class="flex items-center gap-1 shrink-0">
+            <button onclick="toggleCaptain('${player.id}')" class="w-6 h-6 rounded-lg ${player.isCaptain ? 'bg-amber-400 text-slate-950' : 'text-slate-300 hover:text-amber-500 hover:bg-amber-50'} flex items-center justify-center transition cursor-pointer" title="Toggle Captain (C)">
+              <i class="fa-solid fa-crown text-[11px]"></i>
+            </button>
+            ${quickButtons}
+          </div>
+        </div>
+      `;
+    }
+
+    // =========================================================================
+    // SQUAD GRAPHIC / POSTER GENERATOR (HTML5 CANVAS)
+    // =========================================================================
+    function getSortedTeamRoster(teamKey) {
+      return appState.players
+        .filter(p => p.team === teamKey)
+        .sort((a, b) => {
+          if (a.isCaptain !== b.isCaptain) return a.isCaptain ? -1 : 1;
+          return (a.pickOrder || 0) - (b.pickOrder || 0);
+        });
+    }
+
+    function generateAndPreviewPoster(mode) {
+      currentPosterMode = mode;
+      const canvas = document.getElementById('squadCanvas');
+      const ctx = canvas.getContext('2d');
+
+      const rosterA = getSortedTeamRoster('A');
+      const rosterB = getSortedTeamRoster('B');
+
+      if (mode === 'A' && rosterA.length === 0) {
+        showToast(`Add players to ${appState.teamA.name} first!`, 'warning');
+        return;
+      }
+      if (mode === 'B' && rosterB.length === 0) {
+        showToast(`Add players to ${appState.teamB.name} first!`, 'warning');
+        return;
+      }
+      if (mode === 'BOTH' && rosterA.length === 0 && rosterB.length === 0) {
+        showToast('Assign players to teams before generating the poster!', 'warning');
+        return;
+      }
+
+      if (mode === 'A' || mode === 'B') {
+        const teamObj = mode === 'A' ? appState.teamA : appState.teamB;
+        const roster = mode === 'A' ? rosterA : rosterB;
+        drawSingleTeamPoster(canvas, ctx, teamObj, roster);
+      } else {
+        drawBothTeamsPoster(canvas, ctx, appState.teamA, rosterA, appState.teamB, rosterB);
+      }
+
+      document.getElementById('posterEmptyState').classList.add('hidden');
+      document.getElementById('posterCanvasContainer').classList.remove('hidden');
+      document.getElementById('posterPreviewWrapper').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      showToast('Squad graphic generated!', 'success');
+    }
+
+    function drawRoundRect(ctx, x, y, width, height, radius) {
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + width - radius, y);
+      ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+      ctx.lineTo(x + width, y + height - radius);
+      ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+      ctx.lineTo(x + radius, y + height);
+      ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+      ctx.lineTo(x, y + radius);
+      ctx.quadraticCurveTo(x, y, x + radius, y);
+      ctx.closePath();
+    }
+
+    function drawSingleTeamPoster(canvas, ctx, teamObj, roster) {
+      const width = 900;
+      const rowHeight = 56;
+      const headerHeight = 260;
+      const footerHeight = 90;
+      const height = Math.max(920, headerHeight + roster.length * rowHeight + footerHeight);
+
+      canvas.width = width;
+      canvas.height = height;
+
+      // Rich Dark Stadium Background
+      const bgGrad = ctx.createLinearGradient(0, 0, width, height);
+      bgGrad.addColorStop(0, '#090d16');
+      bgGrad.addColorStop(0.5, '#111827');
+      bgGrad.addColorStop(1, '#090d16');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, width, height);
+
+      // Subtle accent glow in top-right
+      const glow = ctx.createRadialGradient(width - 120, 120, 20, width - 120, 120, 480);
+      glow.addColorStop(0, teamObj.color + '66');
+      glow.addColorStop(1, 'transparent');
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, width, height);
+
+      // Top accent bar
+      ctx.fillStyle = teamObj.color;
+      ctx.fillRect(0, 0, width, 14);
+
+      // Match Title & Venue Pill
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      drawRoundRect(ctx, 60, 48, width - 120, 44, 22);
+      ctx.fill();
+
+      ctx.fillStyle = '#cbd5e1';
+      ctx.font = '600 18px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      const subBanner = `${appState.matchTitle || 'SATURDAY CRICKET'}  •  ${appState.matchVenue || 'MATCHDAY SQUAD'}`.toUpperCase();
+      ctx.fillText(subBanner, width / 2, 76);
+
+      // Team Name Header
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '700 64px Oswald, sans-serif';
+      ctx.fillText((teamObj.name || 'TEAM SQUAD').toUpperCase(), width / 2, 165);
+
+      // Official Squad Subtitle
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = '700 20px Inter, sans-serif';
+      ctx.fillText(`OFFICIAL MATCHDAY SQUAD (${roster.length} PLAYERS)`, width / 2, 205);
+
+      // Divider
+      ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(80, 232);
+      ctx.lineTo(width - 80, 232);
+      ctx.stroke();
+
+      // Player List Rows
+      let y = 262;
+      roster.forEach((player, idx) => {
+        // Alternating row card
+        ctx.fillStyle = idx % 2 === 0 ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.025)';
+        drawRoundRect(ctx, 80, y, width - 160, 46, 12);
+        ctx.fill();
+
+        if (player.isCaptain) {
+          ctx.strokeStyle = '#fbbf24';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        }
+
+        // Number badge
+        ctx.fillStyle = teamObj.color;
+        drawRoundRect(ctx, 94, y + 8, 34, 30, 8);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '700 16px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(String(idx + 1), 111, y + 29);
+
+        // Player Name
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#f8fafc';
+        ctx.font = player.isCaptain ? '700 22px Inter, sans-serif' : '600 21px Inter, sans-serif';
+        ctx.fillText(player.name, 146, y + 30);
+
+        // Captain Badge on Right
+        if (player.isCaptain) {
+          ctx.fillStyle = '#fbbf24';
+          drawRoundRect(ctx, width - 215, y + 9, 115, 28, 8);
+          ctx.fill();
+
+          ctx.fillStyle = '#090d16';
+          ctx.font = '800 14px Inter, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('CAPTAIN (C)', width - 157, y + 28);
+        }
+
+        y += rowHeight;
+      });
+
+      // Footer
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#64748b';
+      ctx.font = '500 16px Inter, sans-serif';
+      ctx.fillText('Generated with Saturday XI Builder', width / 2, height - 35);
+    }
+
+    function drawBothTeamsPoster(canvas, ctx, teamA, rosterA, teamB, rosterB) {
+      const width = 1280;
+      const maxRows = Math.max(rosterA.length, rosterB.length, 11);
+      const rowHeight = 54;
+      const headerHeight = 285;
+      const footerHeight = 90;
+      const height = headerHeight + maxRows * rowHeight + footerHeight;
+
+      canvas.width = width;
+      canvas.height = height;
+
+      // Split Gradient Background
+      const bgGrad = ctx.createLinearGradient(0, 0, width, 0);
+      bgGrad.addColorStop(0, '#0b1120');
+      bgGrad.addColorStop(0.5, '#111827');
+      bgGrad.addColorStop(1, '#0b1120');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, width, height);
+
+      // Left & Right Team Radial Glows
+      const glowLeft = ctx.createRadialGradient(220, 140, 20, 220, 140, 480);
+      glowLeft.addColorStop(0, teamA.color + '55');
+      glowLeft.addColorStop(1, 'transparent');
+      ctx.fillStyle = glowLeft;
+      ctx.fillRect(0, 0, width / 2, height);
+
+      const glowRight = ctx.createRadialGradient(width - 220, 140, 20, width - 220, 140, 480);
+      glowRight.addColorStop(0, teamB.color + '55');
+      glowRight.addColorStop(1, 'transparent');
+      ctx.fillStyle = glowRight;
+      ctx.fillRect(width / 2, 0, width / 2, height);
+
+      // Top Dual Color Bar
+      ctx.fillStyle = teamA.color;
+      ctx.fillRect(0, 0, width / 2, 12);
+      ctx.fillStyle = teamB.color;
+      ctx.fillRect(width / 2, 0, width / 2, 12);
+
+      // Match Title Banner
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = '700 20px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText((appState.matchTitle || 'SATURDAY CRICKET MATCH').toUpperCase(), width / 2, 58);
+
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '500 17px Inter, sans-serif';
+      ctx.fillText(appState.matchVenue || 'Weekend Turf Clash', width / 2, 86);
+
+      // Team A & Team B Headers
+      const leftCenter = width * 0.26;
+      const rightCenter = width * 0.74;
+
+      // Team A Pill
+      ctx.fillStyle = teamA.color;
+      drawRoundRect(ctx, 60, 125, width / 2 - 130, 88, 18);
+      ctx.fill();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '700 42px Oswald, sans-serif';
+      ctx.fillText((teamA.name || 'TEAM A').toUpperCase(), leftCenter, 178);
+      ctx.font = '600 15px Inter, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillText(`${rosterA.length} PLAYERS`, leftCenter, 202);
+
+      // Team B Pill
+      ctx.fillStyle = teamB.color;
+      drawRoundRect(ctx, width / 2 + 70, 125, width / 2 - 130, 88, 18);
+      ctx.fill();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '700 42px Oswald, sans-serif';
+      ctx.fillText((teamB.name || 'TEAM B').toUpperCase(), rightCenter, 178);
+      ctx.font = '600 15px Inter, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillText(`${rosterB.length} PLAYERS`, rightCenter, 202);
+
+      // Center VS Emblem
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.arc(width / 2, 169, 36, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = '700 26px Oswald, sans-serif';
+      ctx.fillText('VS', width / 2, 179);
+
+      // Center Vertical Divider Line
+      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(width / 2, 240);
+      ctx.lineTo(width / 2, height - 75);
+      ctx.stroke();
+
+      // Render Helper for each column
+      const drawColumn = (roster, startX, colWidth, accentColor) => {
+        let y = 250;
+        roster.forEach((player, idx) => {
+          ctx.fillStyle = idx % 2 === 0 ? 'rgba(255,255,255,0.055)' : 'rgba(255,255,255,0.025)';
+          drawRoundRect(ctx, startX, y, colWidth, 44, 10);
+          ctx.fill();
+
+          if (player.isCaptain) {
+            ctx.strokeStyle = '#fbbf24';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+          }
+
+          // Number box
+          ctx.fillStyle = accentColor;
+          drawRoundRect(ctx, startX + 10, y + 7, 30, 30, 7);
+          ctx.fill();
+
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '700 15px Inter, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(String(idx + 1), startX + 25, y + 27);
+
+          // Name
+          ctx.textAlign = 'left';
+          ctx.fillStyle = '#f8fafc';
+          ctx.font = player.isCaptain ? '700 20px Inter, sans-serif' : '500 19px Inter, sans-serif';
+          ctx.fillText(player.name, startX + 52, y + 28);
+
+          // Captain Tag
+          if (player.isCaptain) {
+            ctx.fillStyle = '#fbbf24';
+            drawRoundRect(ctx, startX + colWidth - 54, y + 9, 42, 26, 6);
+            ctx.fill();
+
+            ctx.fillStyle = '#090d16';
+            ctx.font = '800 14px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('(C)', startX + colWidth - 33, y + 27);
+          }
+
+          y += rowHeight;
+        });
+      };
+
+      const colWidth = width / 2 - 110;
+      drawColumn(rosterA, 60, colWidth, teamA.color);
+      drawColumn(rosterB, width / 2 + 50, colWidth, teamB.color);
+
+      // Footer
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#64748b';
+      ctx.font = '500 16px Inter, sans-serif';
+      ctx.fillText('Saturday Cricket Squads  •  Generated via Saturday XI Builder', width / 2, height - 32);
+    }
+
+    function downloadCurrentPoster() {
+      const canvas = document.getElementById('squadCanvas');
+      const link = document.createElement('a');
+      const slug = currentPosterMode === 'A'
+        ? appState.teamA.name
+        : currentPosterMode === 'B'
+          ? appState.teamB.name
+          : `${appState.teamA.name}-vs-${appState.teamB.name}`;
+      const cleanSlug = slug.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      link.download = `${cleanSlug}-squad.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      showToast('Squad PNG downloaded!', 'success');
+    }
+
+    function copyPosterToClipboard() {
+      const canvas = document.getElementById('squadCanvas');
+      canvas.toBlob(async (blob) => {
+        try {
+          if (navigator.clipboard && window.ClipboardItem) {
+            await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+            showToast('Squad image copied to clipboard! Paste directly in WhatsApp.', 'success');
+          } else {
+            showToast('Direct image copy not supported in this browser — use Download PNG.', 'warning');
+          }
+        } catch (err) {
+          showToast('Use Download PNG button to save and share the image.', 'info');
+        }
+      }, 'image/png');
+    }
+
+    // =========================================================================
+    // INITIALIZE APP ON LOAD
+    // =========================================================================
+    window.onload = function () {
+      loadState();
+      renderAll();
+    };
+  </script>
+</body>
+</html>
